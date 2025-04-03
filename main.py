@@ -2,6 +2,7 @@ import sklearn
 from kan import *
 import matplotlib.pyplot as plt
 import numpy as np
+from collections import Counter
 from sklearn.datasets import load_breast_cancer, load_wine, load_iris
 
 PATIENCE_VALUE = 3
@@ -22,7 +23,7 @@ def processDataset(data): #sklearn.datasets data
     dataset['test_label'] = torch.from_numpy(np.array(y_test)).type(result_type).to(device)
     return dataset
 
-def doKAN(dataset, steps, KAN_width, KAN_grid, KAN_degree, KAN_lambda, last_best_acc=0, model=None):
+def trainKAN(dataset, steps, KAN_width, KAN_grid, KAN_degree, KAN_lambda, last_best_acc=0, model=None):
     def train_acc():
         return torch.mean((torch.argmax(model(dataset['train_input']), dim=1) == dataset['train_label']).type(dtype))
 
@@ -54,17 +55,18 @@ def doKAN(dataset, steps, KAN_width, KAN_grid, KAN_degree, KAN_lambda, last_best
 
 data = load_iris()
 dataset = processDataset(data)
-
+in_dim = len(data.feature_names)
+out_dim = len(data.target_names)
 #model = KAN(width=[4,4,2,2,3], grid=3, k=0, device=device)
 #results = model.fit(dataset, opt="LBFGS", steps=3, metrics=(train_acc, test_acc), loss_fn=torch.nn.CrossEntropyLoss())
 
-model, results, best_test_acc = doKAN(dataset, 3, [4,4,2,3], 3, 2, 0.001)
+model, results, best_test_acc = trainKAN(dataset, steps=3, KAN_width=[in_dim,4,2,out_dim], KAN_grid=3, KAN_degree=2, KAN_lambda=0.001)
 
 print(results['train_acc'])
 print(results['test_acc'])
 
 
-model, results, best_test_acc = doKAN(dataset, 30, [4,4,2,3], 3, 2, 0.001, last_best_acc=best_test_acc, model=model)
+model, results, best_test_acc = trainKAN(dataset, steps=30, KAN_width=[in_dim,4,2,out_dim], KAN_grid=3, KAN_degree=2, KAN_lambda=0.001, last_best_acc=best_test_acc, model=model)
 
 print(results['train_acc'])
 print(results['test_acc'])
