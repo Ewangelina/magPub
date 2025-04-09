@@ -51,6 +51,8 @@ def trainKAN(dataset, steps=1, KAN_width=None, KAN_grid=None, KAN_degree=3, KAN_
     if model is None:
         model = KAN(width=KAN_width, grid=KAN_grid, k=KAN_degree, device=device, sparse_init=KAN_sparse_init)
 
+    test_line "Model recieved width: " + str(KAN_width)
+    write_to_file(test_line)
     final_results = {}
     final_results['train_acc'] = []
     final_results['test_acc'] = []
@@ -107,16 +109,17 @@ KAN_grid_table = [3, 4, 5, 6, 10]
 KAN_degree_table = [1, 2, 3, 4, 5]
 KAN_lambda_table = np.linspace(0, 0.1, num=25)
 
-for i in range(3, 10):
+for i in range(3, 11):
     current_width = [in_dim, i, out_dim]
     KAN_width_table.append(current_width)
 
 KAN_width_table.append([in_dim, 16, out_dim])
 
-for i in range(3, 8):
-    for j in range(3, 8):
+for i in range(3, 9):
+    for j in range(3, 9):
         current_width = [in_dim, i, j, out_dim]
         KAN_width_table.append(current_width)
+
 
 for grid in KAN_grid_table:
     for degree in KAN_degree_table:
