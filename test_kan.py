@@ -5,11 +5,8 @@ import numpy as np
 from collections import Counter
 from sklearn.datasets import load_breast_cancer, load_wine, load_iris
 
-PATIENCE_VALUE = 3
-TOLERANCE_AMOUNT = 0
-
-#device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-device = torch.device('cpu')
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+#device = torch.device('cpu')
 dtype = torch.get_default_dtype()
 result_type = torch.long
 
@@ -40,4 +37,12 @@ model.suggest_symbolic(0,0,0)
 
 print(SYMBOLIC_LIB.keys())
 add_symbolic('WF', wierd_fun, c=1)
+print(SYMBOLIC_LIB.keys())
 model.suggest_symbolic(0,0,0)
+
+model.fix_symbolic(0,0,0,'WF',fit_params_bool=True)
+line = ""
+formulas = model.symbolic_formula()[0]
+for form in formulas:
+    line += str(ex_round(form, 4)) + "\n"
+print(line[:-1])
