@@ -104,9 +104,9 @@ in_dim = len(data.feature_names)
 out_dim = len(data.target_names)
 
 
-KAN_width_table = [[[4, 0], [4, 0], [5, 0], [3, 0]]]
+KAN_width_table = [[4,3,5],[4,6,5]]
 KAN_grid_table = [3]
-KAN_degree_table = [1]
+KAN_degree_table = [1, 2]
 KAN_lambda_table = [0.0125]
 
 best_acc = 0
@@ -115,9 +115,10 @@ for grid in KAN_grid_table:
     for degree in KAN_degree_table:
         for lam in KAN_lambda_table:
             for width in KAN_width_table:
-                intro_line = "------------- start ---- grid: " + str(grid) + " deg: " + str(degree) + " lambda: " + str(lam) + " width: " + str(width) + " DT: " + string_datetime()
+                copied_width = width.copy()
+                intro_line = "------------- start ---- grid: " + str(grid) + " deg: " + str(degree) + " lambda: " + str(lam) + " width: " + str(copied_width) + " DT: " + string_datetime()
                 write_to_file(intro_line)
-                model, results, best_val_acc, last_i = trainKAN(dataset, steps=STEPS, KAN_width=[[4, 0], [4, 0], [5, 0], [3, 0]], KAN_grid=grid, KAN_degree=degree, KAN_lambda=lam, KAN_sparse_init=False)
+                model, results, best_val_acc, last_i = trainKAN(dataset, steps=STEPS, KAN_width=copied_width, KAN_grid=grid, KAN_degree=degree, KAN_lambda=lam, KAN_sparse_init=False)
                 first_train_line = "normal train: " + str(last_i) + " steps; best val acc: " + str(best_val_acc)
                 write_to_file(first_train_line)
                 write_model_parameters(model)
@@ -127,14 +128,20 @@ for grid in KAN_grid_table:
 
                 interpretable_line = "Turning interpretable ---" + string_datetime() + "---> formulas for each input:"
                 write_to_file(interpretable_line)
-                try:
+                filed_to_interpret = False
+                try: 
                     model.prune()
                     model.auto_symbolic()
                     write_model_formula(model)
-                    new_best_acc = torch.mean((torch.argmax(model(dataset['test_input']), dim=1) == dataset['test_label']).type(dtype)).item() #zbiór walidacyjny
+                    new_best_acc = torch.mean((torch.argmax(model(dataset['test_input']), dim=1) == dataset['test_label']).type(dtype)).item()
                     line = "Validation accuracy after turning: " + str(new_best_acc)
                     write_to_file(line)
-                    
+                except:
+                    fail_line = "FAILED TURNING INTERPREATABLE ---" + string_datetime()
+                    write_to_file(fail_line)
+                    filed_to_interpret = True
+
+                if not filed_to_interpret:
                     train_line = "Training interpretable ---" + string_datetime()
                     write_to_file(train_line)
                     try:
@@ -145,12 +152,8 @@ for grid in KAN_grid_table:
                             write_to_file("New best INTERPRETABLE ACC achieved")
                             best_int_acc = best_val_acc
                     except:
-                        fail_line = "FAILED INTERPRETABLE TRAIN ---" + string_datetime()
+                        fail_line = "FAILED INTERPREATABLE TRAINING ---" + string_datetime()
                         write_to_file(fail_line)
-                except:
-                    fail_line = "FAILED TURNING INTERPRETABLE ---" + string_datetime()
-                        write_to_file(fail_line)
-
 
                 
 

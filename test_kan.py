@@ -22,12 +22,10 @@ def wierd_fun(inp):
             ret.append(wierd_fun(el))
     return torch.from_numpy(np.array(ret)).type(dtype).to(device)
 
-# create a KAN: 2D inputs, 1D output, and 5 hidden neurons. cubic spline (k=3), 5 grid intervals (grid=5).
 model = KAN(width=[1,1], grid=3, k=3, seed=2, device=device)
 dataset = create_dataset(wierd_fun, n_var=1, device=device)
 print(wierd_fun(dataset['test_input'][0:10]))
 
-# train the model
 model.fit(dataset, opt="LBFGS", steps=2);
 
 model.plot()

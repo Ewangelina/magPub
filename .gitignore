@@ -4,3 +4,5 @@ model/
 .*/
 text_logs/
 figures/
+for csv/
+data/MNIST/

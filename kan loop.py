@@ -10,9 +10,9 @@ def string_datetime():
     return str(datetime.datetime.now()).replace(":", "").replace("-", "").replace(".", "")
 
 PATIENCE_VALUE = 3
-TOLERANCE_AMOUNT = 0
+TOLERANCE_AMOUNT = 0.00001
 LOG_FILE_FILEPATH = '.\\text_logs\\' + string_datetime() + '.txt'
-STEPS = 30
+STEPS = 90
 
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -107,18 +107,20 @@ out_dim = len(data.target_names)
 KAN_width_table = []
 KAN_grid_table = [3, 4, 5, 6, 10]
 KAN_degree_table = [1, 2, 3, 4, 5]
-KAN_lambda_table = np.linspace(0, 0.01, num=25)
+KAN_lambda_table = np.linspace(0, 0.001, num=25)
 
-for i in range(3, 11):
+for i in range(3, 11, 2):
     current_width = [in_dim, i, out_dim]
     KAN_width_table.append(current_width)
 
 KAN_width_table.append([in_dim, 16, out_dim])
 
-for i in range(3, 9):
-    for j in range(3, 9):
+for i in range(3, 9, 2):
+    for j in range(3, 9, 2):
         current_width = [in_dim, i, j, out_dim]
         KAN_width_table.append(current_width)
+
+print(KAN_width_table)
 
 best_acc = 0
 best_int_acc = 0
@@ -139,6 +141,7 @@ for grid in KAN_grid_table:
 
                 interpretable_line = "Turning interpretable ---" + string_datetime() + "---> formulas for each input:"
                 write_to_file(interpretable_line)
+                filed_to_interpret = False
                 try: 
                     model.prune()
                     model.auto_symbolic()
@@ -146,7 +149,12 @@ for grid in KAN_grid_table:
                     new_best_acc = torch.mean((torch.argmax(model(dataset['test_input']), dim=1) == dataset['test_label']).type(dtype)).item()
                     line = "Validation accuracy after turning: " + str(new_best_acc)
                     write_to_file(line)
-                    
+                except:
+                    fail_line = "FAILED TURNING INTERPREATABLE ---" + string_datetime()
+                    write_to_file(fail_line)
+                    filed_to_interpret = True
+
+                if not filed_to_interpret:
                     train_line = "Training interpretable ---" + string_datetime()
                     write_to_file(train_line)
                     try:
@@ -159,9 +167,7 @@ for grid in KAN_grid_table:
                     except:
                         fail_line = "FAILED INTERPREATABLE TRAINING ---" + string_datetime()
                         write_to_file(fail_line)
-                except:
-                    fail_line = "FAILED TURNING INTERPREATABLE ---" + string_datetime()
-                    write_to_file(fail_line)
+                
 
                 
 
