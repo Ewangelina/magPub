@@ -24,22 +24,21 @@ class CNNFeatureExtractor(nn.Module):
     def __init__(self):
         super(CNNFeatureExtractor, self).__init__()
         self.features = nn.Sequential(
-            nn.Conv2d(1, 32, kernel_size=3, padding=1),
+            nn.Conv2d(1, 32, kernel_size=(3, 3)),
             nn.ReLU(),
-            nn.MaxPool2d(kernel_size=2, stride=2),
-            nn.Conv2d(32, 64, kernel_size=3, padding=1),
+            nn.AvgPool2d(kernel_size=(2,2), stride=(2,2)),
+            nn.Conv2d(32, 64, kernel_size=(3, 3)),
             nn.ReLU(),
-            nn.MaxPool2d(kernel_size=2, stride=2),
-            nn.Conv2d(64, 64, kernel_size=3, padding=1),
-            nn.ReLU(),
-            nn.MaxPool2d(kernel_size=2, stride=2)
+            nn.AvgPool2d(kernel_size=2, stride=2)
         )
-        self.fc = nn.Linear(576, 50)  # Change to desired feature size if needed (50 in this example)
+        self.fc = nn.Linear(1600, 256)  # Change to desired feature size if needed (50 in this example)
+        self.fc2 = nn.Linear(256, 16)
     
     def forward(self, x):
         x = self.features(x)
-        x = x.view(x.size(0), -1)  # Flatten the tensor
+        x = x.reshape(x.shape[0], -1)  # Flatten the tensor
         x = self.fc(x)
+        x = self.fc2(x)
         return x
 
 cnn_model = CNNFeatureExtractor()
@@ -56,17 +55,14 @@ def extract_features(model, loader):
             labels.append(target)
     return torch.cat(features), torch.cat(labels)
 
-#train_features, train_labels = extract_features(cnn_model, train_loader)
-
-with open('./data/extracted_train.sav', 'rb') as f:
-    train_features, train_labels = pickle.load(f)
+train_features, train_labels = extract_features(cnn_model, train_loader)
 
 # Save extracted features and labels using pickle
-with open('./data/extracted_train.sav', 'wb') as f:
+with open('./data/extracted_train_16.sav', 'wb') as f:
     pickle.dump((train_features, train_labels), f)
 
 train_features, train_labels = extract_features(cnn_model, test_loader)
 
 # Save extracted features and labels using pickle
-with open('./data/extracted_test.sav', 'wb') as f:
+with open('./data/extracted_test_16.sav', 'wb') as f:
     pickle.dump((train_features, train_labels), f)

@@ -4,5 +4,7 @@ model/
 .*/
 text_logs/
 figures/
-for csv/
+*.txt
+*.sav
+*.csv
 data/MNIST/
