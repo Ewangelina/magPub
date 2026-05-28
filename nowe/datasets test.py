@@ -9,10 +9,73 @@ import numpy as np
 from sklearn.datasets import load_breast_cancer, load_wine, load_iris, load_digits
 from datetime import datetime
 from sklearn import neural_network
+import pandas as pd
+from typing import NamedTuple
+import dill as pickle
 
 skip = 0
+continueing = False
+MODEL_VERSION = "0.1"
 # -----------------------------------
 dataset_name = "Iris"
+custom_dataset_target_column = "class"
+
+
+def string_datetime():
+    return str(datetime.now()).replace(":", "").replace("-", "").replace(".", "")
+
+PATIENCE_VALUE = 10
+TOLERANCE_AMOUNT = 0
+#LOG_FILE_FILEPATH = '/content/drive/My Drive/text_logs/' + string_datetime() + "_" + dataset_name + '.txt'
+LOG_FILE_FILEPATH = './text_logs/' + string_datetime() + "_" + dataset_name + '.txt'
+SAVE_MODEL_FILEPATH = LOG_FILE_FILEPATH.split("/text_logs")[0] + "/data/models_savepoint"
+STEPS = 1000
+BATCH_SIZE = -1
+DELAY = 0
+NO_MODELS_FOR_AVERAGE = 1
+
+KAN_width_table = []
+KAN_grid_table = [2]
+KAN_degree_table = [2]
+KAN_lambda_table = [0]
+
+class MyDataset(NamedTuple):
+    data: np.ndarray
+    target: np.ndarray
+    target_names: np.ndarray
+    feature_names: list
+    DESCR: str
+
+def load_csv(filepath: str, target_column: str = 'species') -> MyDataset:
+    df = pd.read_csv(filepath)
+
+    # Wyodrębnij cechy i etykiety
+    feature_names = [col for col in df.columns if col != target_column]
+    X = df[feature_names].values
+
+    # Konwertuj etykiety tekstowe na liczby
+    y_text = df[target_column].values
+    unique_targets = np.unique(y_text)
+    target_names = unique_targets
+
+    # Mapuj etykiety tekstowe na liczby
+    target_mapping = {name: idx for idx, name in enumerate(unique_targets)}
+    y = np.array([target_mapping[label] for label in y_text], dtype=np.int64)
+
+    # Opis datasetu
+    DESCR = f"""Dataset loaded from {filepath}
+Features: {feature_names}
+Target: {target_column}
+Target classes: {target_names}
+Samples: {len(X)}"""
+
+    return MyDataset(
+        data=X,
+        target=y,
+        target_names=target_names,
+        feature_names=feature_names,
+        DESCR=DESCR
+    )
 
 data = None
 if dataset_name == "Iris":
@@ -24,27 +87,12 @@ elif dataset_name == "Cancer":
 elif dataset_name == "Digits":
     data = load_digits()
 else:
-    exit(1)
+    filepath = LOG_FILE_FILEPATH.split("/text_logs")[0] + "/data/" + dataset_name + ".csv"
+    data = load_csv(filepath, custom_dataset_target_column)
+    print(data.DESCR)
 
-def string_datetime():
-    return str(datetime.now()).replace(":", "").replace("-", "").replace(".", "")
 
-PATIENCE_VALUE = 25
-TOLERANCE_AMOUNT = 0
-#LOG_FILE_FILEPATH = '/content/drive/My Drive/text_logs/' + string_datetime() + "_" + dataset_name + '.txt'
-LOG_FILE_FILEPATH = './text_logs/' + string_datetime() + "_" + dataset_name + '.txt'
-STEPS = 1
-BATCH_SIZE = -1
-MLP_TEST_IN = 1
-DELAY = 1
-NO_MODELS_FOR_AVERAGE = 1
-
-KAN_width_table = []
-KAN_grid_table = [1]
-KAN_degree_table = [1]
-KAN_lambda_table = [0]
-
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+device = 'cpu'
 print(device)
 dtype = torch.get_default_dtype()
 result_type = torch.long
@@ -59,6 +107,10 @@ def write_to_file(line):
     with open(LOG_FILE_FILEPATH, "a") as f:
         f.write(line)
         f.close()
+
+write_to_file(f"This is KAN on {device} - batch size {BATCH_SIZE}; max steps {STEPS}. Optimizer is Adam for MLP LBFGS for KAN")
+if continueing:
+  write_to_file(f"Restarting the training from {MODEL_VERSION}")
 
 def log_csv(values):
     csv_file = LOG_FILE_FILEPATH[:-4] + "_csv.txt"
@@ -108,9 +160,9 @@ def make_mlp(no_layers, layers_width):
   for i in range(no_layers):
     layers.append(layers_width)
   if BATCH_SIZE == -1:
-    return sklearn.neural_network.MLPClassifier(hidden_layer_sizes=layers, activation='relu', solver='lbfgs', early_stopping=True, validation_fraction=0.2, n_iter_no_change=PATIENCE_VALUE, tol = TOLERANCE_AMOUNT, max_iter = STEPS)
+    return sklearn.neural_network.MLPClassifier(hidden_layer_sizes=layers, activation='relu', solver='adam')
   else:
-    return sklearn.neural_network.MLPClassifier(hidden_layer_sizes=layers, activation='relu', solver='lbfgs', early_stopping=True, validation_fraction=0.2, n_iter_no_change=PATIENCE_VALUE, tol = TOLERANCE_AMOUNT, max_iter = STEPS, batch_size=BATCH_SIZE)
+    return sklearn.neural_network.MLPClassifier(hidden_layer_sizes=layers, activation='relu', solver='adam', batch_size=BATCH_SIZE)
 
 def create_matching_mlp(KAN_width, KAN_degree, KAN_grid, plus=False, normal_layer_depth=2):
   no_kan_parameters = count_kan_parameters_full(KAN_width, KAN_degree, KAN_grid)
@@ -156,13 +208,29 @@ def processDataset(data, not_random=None): #sklearn.datasets data
 
 def trainKAN(dataset, steps=1, KAN_width=None, KAN_grid=None, KAN_degree=3, KAN_lambda=0, KAN_sparse_init=False, last_best_acc=0, model=None):
     def train_acc():
-        return torch.mean((torch.argmax(model(dataset['train_input']), dim=1) == dataset['train_label']).type(dtype))
+        acc = torch.mean((torch.argmax(model(dataset['train_input']), dim=1) == dataset['train_label']).type(dtype))
+        line = "KAN - train_acc: " + str(acc)
+        write_to_file(line)
+        return acc
 
     def test_acc():
-        return torch.mean((torch.argmax(model(dataset['test_input']), dim=1) == dataset['test_label']).type(dtype))
+        acc = torch.mean((torch.argmax(model(dataset['test_input']), dim=1) == dataset['test_label']).type(dtype))
+        line = "KAN - test_acc: " + str(acc)
+        write_to_file(line)
+        return acc
 
+    holdover_steps = 0
     if model is None:
-        model = KAN(width=KAN_width, grid=KAN_grid, k=KAN_degree, device=device, sparse_init=KAN_sparse_init, auto_save=False,  grid_range=[0,2], affine_trainable = False)
+        model = KAN(width=KAN_width, grid=KAN_grid, k=KAN_degree, device=device, sparse_init=KAN_sparse_init, auto_save=True, ckpt_path=SAVE_MODEL_FILEPATH, grid_range=[0,2], affine_trainable = False)
+
+    global continueing
+    if continueing:
+        continueing = False
+        prev_model_filepath = LOG_FILE_FILEPATH.split("/text_logs")[0] + "/data/temp_model.pkl"
+        loaded = pickle.load(open(prev_model_filepath, 'rb'))
+        model = KAN.loadckpt(SAVE_MODEL_FILEPATH + '/' + MODEL_VERSION)
+        holdover_steps = loaded[0]
+        last_best_acc = loaded[1]
 
     final_results = {}
     final_results['train_acc'] = []
@@ -170,6 +238,7 @@ def trainKAN(dataset, steps=1, KAN_width=None, KAN_grid=None, KAN_degree=3, KAN_
     best_test_acc = last_best_acc
     best_model = model
     patience = PATIENCE_VALUE
+    steps = steps - holdover_steps
 
     for i in range(steps):
         fit_results = model.fit(dataset, opt='LBFGS', steps=1, lamb=KAN_lambda, metrics=(train_acc, test_acc), loss_fn=torch.nn.CrossEntropyLoss(), batch=BATCH_SIZE, update_grid=False)
@@ -177,28 +246,67 @@ def trainKAN(dataset, steps=1, KAN_width=None, KAN_grid=None, KAN_degree=3, KAN_
         final_results['test_acc'].append(fit_results['test_acc'][0])
         if fit_results['test_acc'][0] < best_test_acc + TOLERANCE_AMOUNT:
             if patience == 0:
-                return best_model, final_results, best_test_acc, i + 1
+                return best_model, final_results, best_test_acc, i + 1 + holdover_steps
             else:
                 patience -= 1
                 if fit_results['train_acc'][0] == 1:
-                  return best_model, final_results, best_test_acc, i + 1
+                  return best_model, final_results, best_test_acc, i + 1 + holdover_steps
         else:
             patience = PATIENCE_VALUE
             best_test_acc = fit_results['test_acc'][0]
             best_model = model
 
+            save_model_filepath = LOG_FILE_FILEPATH.split("/text_logs")[0] + "/data/temp_model.pkl"
+            pickle.dump([i + 1, best_test_acc], open(save_model_filepath, 'wb'))
+
             if best_test_acc == 1:
-              return best_model, final_results, best_test_acc, i + 1
+              return best_model, final_results, best_test_acc, i + 1 + holdover_steps
 
             if fit_results['train_acc'][0] == 1:
-              return best_model, final_results, best_test_acc, i + 1
+              return best_model, final_results, best_test_acc, i + 1 + holdover_steps
 
-    return best_model, final_results, best_test_acc, steps
+    return best_model, final_results, best_test_acc, steps + holdover_steps
 
 def trainMLP(dataset, model):
-    model.fit(dataset['train_input'], dataset['train_label'])
-    print("RETURNING: ", model.n_iter_)
-    return model, None , model.n_iter_
+    best_acc = 0
+    best_model = model
+    patience = PATIENCE_VALUE
+    train_acc = 0
+    val_acc = 0
+    classes = np.array(dataset['train_label'])
+    delay = DELAY
+
+    for i in range(STEPS):
+        model = model.partial_fit(dataset['train_input'], dataset['train_label'], classes=classes)
+        val_acc = mlp_evaluate(model, dataset['test_input'], dataset['test_label'])
+
+        line = "MLP - val_acc: " + str(val_acc)
+        write_to_file(line)
+
+        if val_acc < best_acc + TOLERANCE_AMOUNT:
+            if patience == 0:
+                return best_model, best_acc, i + 1
+            else:
+                patience -= 1
+        else:
+            patience = PATIENCE_VALUE
+            best_acc = val_acc
+            best_model = model
+
+            if best_acc == 1:
+                return best_model, best_acc, i + 1
+
+        if delay == 0:
+            delay = DELAY
+            mlp_train_acc = mlp_evaluate(mlp_model, dataset['train_input'], dataset['train_label'])
+            line = "MLP - train_acc: " + str(mlp_train_acc)
+            write_to_file(line)
+            if mlp_train_acc == 1:
+                return best_model, best_acc, i + 1
+        else:
+            delay -= 1
+
+    return best_model, best_acc, STEPS
 
 
 def write_model_parameters(model):
@@ -246,8 +354,8 @@ write_to_file(line)
 #current_width = [in_dim, int((in_dim+in_dim-out_dim)/2), out_dim]
 #KAN_width_table.append(current_width)
 
-if True:
-  for i in range(1, in_dim, 1):
+if False:
+  for i in range(1, in_dim, 2):
       current_width = [in_dim, i, out_dim]
       KAN_width_table.append(current_width)
 
@@ -257,6 +365,9 @@ if False:
         current_width = [in_dim, i, j, out_dim]
         KAN_width_table.append(current_width)
 
+if True:
+    KAN_width_table.append([in_dim, out_dim])
+    
 best_acc = 0
 best_int_acc = 0
 best_acc = False
@@ -265,6 +376,8 @@ model = None
 line = f"Widths used: {KAN_width_table}"
 print(line)
 write_to_file(line)
+print(f'Columns: {data.feature_names}')
+print(f'Classes: {data.target_names}')
 
 for grid in KAN_grid_table:
     for degree in KAN_degree_table:
@@ -278,7 +391,7 @@ for grid in KAN_grid_table:
 
                 garbage_width = width.copy()
                 kan_start = string_datetime()
-                intro_line = "------------- start ---- grid: " + str(grid) + " deg: " + str(degree) + " lambda: " + str(lam) + " width: " + str(copied_width) + " DT: " + kan_start
+                intro_line = "------------- KAN start ---- grid: " + str(grid) + " deg: " + str(degree) + " lambda: " + str(lam) + " width: " + str(copied_width) + " DT: " + kan_start
                 write_to_file(intro_line)
 
                 model, results, kan_val_acc, last_i = trainKAN(dataset, steps=STEPS, KAN_width=garbage_width, KAN_grid=grid, KAN_degree=degree, KAN_lambda=lam, KAN_sparse_init=False)
@@ -293,17 +406,16 @@ for grid in KAN_grid_table:
                 accurate_grid_elements = write_model_parameters(model)
 
                 mlp_start = kan_end = string_datetime()
-                line = "MLP section start at " + kan_end
+                line = "------------- MLP min start section start at " + kan_end
                 write_to_file(line)
 
                 mlp_model, no_layers, width_layers = create_matching_mlp(copied_width, degree, accurate_grid_elements, False, 1)
-                mlp_model, none, mlp_steps = trainMLP(dataset, mlp_model)
-                mlp_val_acc = mlp_evaluate(mlp_model, dataset['test_input'], dataset['test_label'])
+                mlp_model, mlp_val_acc, mlp_steps = trainMLP(dataset, mlp_model)
                 mlp_train_acc = mlp_evaluate(mlp_model, dataset['train_input'], dataset['train_label'])
                 mlp_test_acc = mlp_evaluate(mlp_model, full_dataset['test_input'], full_dataset['test_label'])
 
                 mlp_start2 = mlp_end = string_datetime()
-                line = "MLP less with " + str(no_layers) + " layers of width " + str(width_layers) + " achieved TEST accuracy of " + str(mlp_test_acc) + " val acc: " + str(mlp_val_acc) + " train acc: " + str(mlp_train_acc) + " at " + str(mlp_steps)
+                line = "------------- MLP less with " + str(no_layers) + " layers of width " + str(width_layers) + " achieved TEST accuracy of " + str(mlp_test_acc) + " val acc: " + str(mlp_val_acc) + " train acc: " + str(mlp_train_acc) + " at " + str(mlp_steps)
                 write_to_file(line)
 
                 kan_params = count_kan_parameters_full(copied_width, degree, accurate_grid_elements)
@@ -313,14 +425,16 @@ for grid in KAN_grid_table:
                   mlp_params += count_mlp_layer_parameters(width_layers, width_layers)
                 mlp_params += count_mlp_layer_parameters(copied_width[0], width_layers) + count_mlp_layer_parameters(width_layers, copied_width[-1])
 
+                line = "------------- MLP max start section start at " + mlp_end
+                write_to_file(line)
+
                 mlp2_model, no_layers2, width_layers2 = create_matching_mlp(copied_width, degree, accurate_grid_elements, True, 1)
-                mlp2_model, none, mlp2_steps = trainMLP(dataset, mlp2_model)
-                mlp2_val_acc = mlp_evaluate(mlp_model, dataset['test_input'], dataset['test_label'])
+                mlp2_model, mlp2_val_acc, mlp2_steps = trainMLP(dataset, mlp2_model)
                 mlp2_train_acc = mlp_evaluate(mlp2_model, dataset['train_input'], dataset['train_label'])
                 mlp2_test_acc = mlp_evaluate(mlp2_model, full_dataset['test_input'], full_dataset['test_label'])
 
                 mlp_end2 = string_datetime()
-                line = "MLP more with " + str(no_layers2) + " layers of width " + str(width_layers2) + " achieved TEST accuracy of " + str(mlp2_test_acc) + " val acc: " + str(mlp2_val_acc) + " train acc: " + str(mlp2_train_acc) + " at " + str(mlp2_steps)
+                line = "------------- MLP more with " + str(no_layers2) + " layers of width " + str(width_layers2) + " achieved TEST accuracy of " + str(mlp2_test_acc) + " val acc: " + str(mlp2_val_acc) + " train acc: " + str(mlp2_train_acc) + " at " + str(mlp2_steps)
                 write_to_file(line)
 
                 mlp2_params = 0
@@ -330,27 +444,56 @@ for grid in KAN_grid_table:
 
                 log_csv([dataset_name, str(accurate_grid_elements), str(grid), str(degree), str(lam), str(copied_width), str(kan_params), time_difference(kan_start, kan_end), last_i, kan_train_acc, kan_val_acc, str(kan_test_acc), str(mlp_test_acc), mlp_val_acc, mlp_train_acc, mlp_steps, time_difference(mlp_start, mlp_end), str(mlp_params), str(no_layers), str(width_layers), str(mlp2_test_acc), mlp2_val_acc, mlp2_train_acc, mlp2_steps, time_difference(mlp_start2, mlp_end2), str(mlp2_params), str(no_layers2), str(width_layers2)])
 
+if continueing:
+    model = KAN.loadckpt(SAVE_MODEL_FILEPATH + '/' + MODEL_VERSION)
 
-print("I'm done accually!")
 
+filepath = 'C:/Users/E D/Desktop/plots/'  
+print("---------BEFORE CHANGES---------")
+kan_test_acc = torch.mean((torch.argmax(model(full_dataset['test_input']), dim=1) == full_dataset['test_label']).type(dtype)).item()
+print("KAN test acc:",kan_test_acc) 
 
-
-model.plot()
-plt.show()
-
-#lib = ['x','x^2','x^3','x^4','exp','log','sqrt','tanh','sin','abs']
-#model.auto_symbolic(lib=lib)
-model.auto_symbolic()
-
-model.plot()
-plt.show()
 
 line = ""
 formulas = model.symbolic_formula()[0]
-print(formulas)
 for form in formulas:
-    line += str(ex_round(form, 4)) + "\n"
+    line += str(ex_round(form, 4)) + "\n\n"
 print(line[:-1])
+
+model.plot()
+filename = filepath + "iris_1.jpg"
+plt.savefig(filename)
+
+print("---------WITH PRUNEING---------")
+model = model.prune(node_th = 0.1, edge_th = 0.1)
+
+model.plot()
+filename = filepath + "iris_2.jpg"
+plt.savefig(filename)
+
+
+lib = ['x','x^2','x^3','x^4','exp','log','sqrt','tanh','sin','abs']
+model.auto_symbolic(lib=lib)
+#model.auto_symbolic()
+
+print("---------WITH FORMULAS---------")
+kan_test_acc = torch.mean((torch.argmax(model(full_dataset['test_input']), dim=1) == full_dataset['test_label']).type(dtype)).item()
+print("KAN test acc:",kan_test_acc) 
+
+line = ""
+formulas = model.symbolic_formula()[0]
+for form in formulas:
+    line += str(ex_round(form, 4)) + "\n\n"
+print(line[:-1])
+
+
+model.plot()
+filename = filepath + "iris_3.jpg"
+plt.savefig(filename)
+
+
+
+
 
 
 
