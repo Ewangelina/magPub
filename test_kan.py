@@ -20,31 +20,15 @@ result_type = torch.long
 def write_to_file(line):
     return
 
-def plot_model(model, x_min=-1, x_max=1, n_points=100):
-    """
-    Wizualizuje odpowiedź modelu regresji na wykresie.
+def plot_model(filename, model, x_min=-1, x_max=1, n_points=100):
+    global filepath
     
-    Args:
-        model: Trained regression model (np. z sklearn)
-        x_min: Minimalna wartość na osi X (default: -1)
-        x_max: Maksymalna wartość na osi X (default: 1)
-        n_points: Liczba punktów do wizualizacji (default: 100)
-    """
-    # Generujemy 100 wartości między -1 a 1
     X = np.linspace(x_min, x_max, n_points).reshape(-1, 1)
-    
-    # Predykcje modelu
-    y_pred = model.predict(X)
-    
-    # Tworzymy wykres
-    plt.figure(figsize=(10, 6))
-    plt.plot(X, y_pred, 'b-', linewidth=2, label='Predykcja modelu')
-    plt.xlabel('X', fontsize=12)
-    plt.ylabel('Y', fontsize=12)
-    plt.title('Wizualizacja modelu regresji', fontsize=14)
-    plt.grid(True, alpha=0.3)
-    plt.legend()
-    plt.show()
+    X = torch.from_numpy(np.array(X)).type(dtype).to(device)
+    Y = model(X)
+    plt.plot(X.detach().numpy(), Y.detach().numpy())
+    plt.savefig(filename)
+    plt.clf()
 
     
 
@@ -81,14 +65,26 @@ print(WF(dataset['test_input'][0:10]))
 print(len(dataset['train_input']))
 
 model = KAN(width=[1,1], grid=3, k=3, device=device)
-model.fit(dataset, opt="LBFGS", steps=1);
-print("train acc:", torch.mean((torch.argmax(model(dataset['train_input']), dim=1) == dataset['train_label']).type(dtype)))
-print("test acc:", torch.mean((torch.argmax(model(dataset['test_input']), dim=1) == dataset['test_label']).type(dtype)))
+model.fit(dataset, opt="LBFGS", steps=1)
 
 model.plot()
 #plt.show()
 filename = filepath + "1.jpg"
 plt.savefig(filename)
+plt.clf()
+filename = filepath + "1a.jpg"
+plot_model(filename, model)
+
+print("Po większej ilości kroków -------- ")
+model.fit(dataset, opt="LBFGS", steps=20)
+
+model.plot()
+#plt.show()
+filename = filepath + "11.jpg"
+plt.savefig(filename)
+plt.clf()
+filename = filepath + "11a.jpg"
+plot_model(filename, model)
 
 print("Bez nowej funkcji -------- ")
 model.suggest_symbolic(0,0,0)
@@ -114,3 +110,6 @@ model.plot()
 #plt.show()
 filename = filepath + "2.jpg"
 plt.savefig(filename)
+plt.clf()
+filename = filepath + "2a.jpg"
+plot_model(filename, model)
